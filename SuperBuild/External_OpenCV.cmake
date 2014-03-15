@@ -4,7 +4,7 @@ set(extProjName "OpenCV")
 #endif()
 
 set(OPENCV_GIT_REPO "${git_protocol}://code.opencv.org/opencv.git")
-set(OPENCV_GIT_TAG "468eefe0ce06b1059db9ab27ab97839cea7c9a4e")
+set(OPENCV_GIT_TAG "b4845d8c9ff5b40956191e0302fbd6559e53a27c")
 
 if(NOT DEFINED OpenCV_DIR)
   set(OpenCV_DEPEND OpenCV)
@@ -31,6 +31,7 @@ if(NOT DEFINED OpenCV_DIR)
       -DWITH_JPEG:BOOL=OFF
       -DWITH_TIFF:BOOL=OFF
       -DWITH_PNG:BOOL=OFF
+      -DWITH_ZLIB:BOOL=ON
 ## The following might cause build issues, here for testing
       -DENABLE_SSE:BOOL=ON
       -DENABLE_SSE2:BOOL=ON
@@ -56,7 +57,7 @@ if(NOT DEFINED OpenCV_DIR)
       -DBUILD_opencv_ts:BOOL=ON
       -DBUILD_opencv_video:BOOL=ON
       -DBUILD_opencv_videostab:BOOL=ON
-      -DBUILD_opencv_world:BOOL=ON
+      -DBUILD_opencv_world:BOOL=OFF
       -DBUILD_SHARED_LIBS:BOOL=ON
       -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/${proj}-build
       -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
