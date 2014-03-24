@@ -20,12 +20,13 @@ find_package(Git REQUIRED)
 option(${EXTENSION_NAME}_SUPERBUILD "Build ${EXTENSION_NAME} and the projects it depends on via SuperBuild.cmake." ON)
 mark_as_advanced(${EXTENSION_NAME}_SUPERBUILD)
 if(${EXTENSION_NAME}_SUPERBUILD)
-  if(NOT OpenCV_DIR)
+  if(NOT ArUco_DIR)
     include("${CMAKE_CURRENT_SOURCE_DIR}/SuperBuild.cmake")
     return()
   endif()
 endif()
 
+find_package(ArUco REQUIRED)
 find_package(OpenCV REQUIRED)
 
 #-----------------------------------------------------------------------------
@@ -47,6 +48,7 @@ set(MODULE_INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_BINARY_DIR}/Logic
   ${CMAKE_CURRENT_SOURCE_DIR}/Widgets
   ${CMAKE_CURRENT_BINARY_DIR}/Widgets
+  ${ArUco_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   )
 
@@ -66,12 +68,12 @@ set(MODULE_UI_SRCS
   Resources/UI/qSlicer${MODULE_NAME}ModuleWidget.ui
   )
 
-link_directories(${CMAKE_CURRENT_BINARY_DIR}/OpenCV-build/lib)  
+#link_directories(${ArUco_LINK_DIR} ${ArUco_OpenCV_LINK_DIR})  
 
 set(MODULE_TARGET_LIBRARIES
   vtkSlicer${MODULE_NAME}ModuleLogic
   qSlicer${MODULE_NAME}ModuleWidgets
-  ${OpenCV_LIBRARIES}
+  ${OpenCV_LIBS}
   )
 
 set(MODULE_RESOURCES

@@ -22,23 +22,13 @@ else()
   set(gen "${CMAKE_GENERATOR}")
 endif()
 
-
-
 #-----------------------------------------------------------------------------
-# PointBasedPatientRegistration
+# ArUco
 #-----------------------------------------------------------------------------
 
-#if(NOT PointBasedPatientRegistration_DIR)
-#  include("${CMAKE_CURRENT_SOURCE_DIR}/SuperBuild/External_PointBasedPatientRegistration.cmake")
-#endif()
-
-#-----------------------------------------------------------------------------
-# OpenCV
-#-----------------------------------------------------------------------------
-
-#if(NOT OpenCV_DIR)
-#  include("${CMAKE_CURRENT_SOURCE_DIR}/SuperBuild/External_OpenCV.cmake")
-#endif()
+if(NOT ArUco_DIR)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/SuperBuild/External_ArUco.cmake")
+endif()
 
 #-----------------------------------------------------------------------------
 # Project dependencies
@@ -46,15 +36,7 @@ endif()
 
 set(project EndoscopeConsole)
 set(${project}_DEPENDENCIES 
-  #PointBasedPatientRegistration
-  OpenCV)
-
-SlicerMacroCheckExternalProjectDependency(${project})
-
-set(ep_cmake_args)
-foreach(dep ${EXTENSION_DEPENDS})
-  list(APPEND ep_cmake_args -D${dep}_DIR:PATH=${${dep}_DIR})
-endforeach()
+  ArUco)
 
 ExternalProject_Add(${project}
   DOWNLOAD_COMMAND ""
@@ -62,6 +44,7 @@ ExternalProject_Add(${project}
   BINARY_DIR ${EXTENSION_BUILD_SUBDIRECTORY}
   CMAKE_GENERATOR ${gen}
   CMAKE_ARGS
+    ${ep_cmake_args}
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_RUNTIME_OUTPUT_DIRECTORY:PATH=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
     -DCMAKE_LIBRARY_OUTPUT_DIRECTORY:PATH=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
@@ -75,11 +58,10 @@ ExternalProject_Add(${project}
     -DEXTENSION_SUPERBUILD_BINARY_DIR:PATH=${${EXTENSION_NAME}_BINARY_DIR}
     # Slicer
     -DSlicer_DIR:PATH=${Slicer_DIR}
-    # OpenCV
-    -DOpenCV_DIR:PATH=${OpenCV_DIR}
-    # PointBasedPatientRegistration
-    #-DPointBasedPatientRegistration_DIR:PATH=${PBPR_DIR}
-    ${ep_cmake_args}
+    # ArUco & OpenCV
+    -DArUco_DIR:PATH=${ArUco_DIR}
+    -DOpenCV_DIR:PATH=${ArUco_DIR}/OpenCV-build
   DEPENDS
     ${${project}_DEPENDENCIES}
+  INSTALL_COMMAND ""
   )
