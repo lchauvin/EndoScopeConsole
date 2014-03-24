@@ -1,7 +1,7 @@
 set(extProjName "ArUco")
 
 set(ARUCO_GIT_REPO "${git_protocol}://github.com/lchauvin/ArUco.git")
-set(ARUCO_GIT_TAG "2e8d048457802658fb072a7d142d531cce2703b0")
+set(ARUCO_GIT_TAG "3763fd7fe0e740503f351d8e758c98e8c846fe08")
 
 if(NOT DEFINED ArUco_DIR)
   set(ArUco_DEPEND ArUco)
