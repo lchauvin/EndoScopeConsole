@@ -170,13 +170,17 @@ int qSlicerEndoscopeConsoleModuleWidget::CameraHandler()
             
             this->VideoImageData->SetDimensions(newImageSize.width, newImageSize.height, 1);
             this->VideoImageData->SetExtent(0, newImageSize.width-1, 0, newImageSize.height-1, 0, 0 );
-            this->VideoImageData->SetNumberOfScalarComponents(3);
-            this->VideoImageData->SetScalarTypeToUnsignedChar();
-            this->VideoImageData->AllocateScalars();
-            this->VideoImageData->Update();
-            
+#if VTK_MAJOR_VERSION <=5
+	    this->VideoImageData->SetNumberOfScalarComponents(3);
+	    this->VideoImageData->SetScalarTypeToUnsignedChar();
+	    this->VideoImageData->AllocateScalars();
+	    this->VideoImageData->Update();
+#else
+            this->VideoImageData->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
+            this->VideoImageData->Modified();
+#endif
+
             qSlicerApplication *  app = qSlicerApplication::application();
-            qMRMLThreeDView* threeDView = app->layoutManager()->threeDWidget(0)->threeDView();
             vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
             activeRenderer->SetLayer(1);
             
@@ -192,9 +196,6 @@ int qSlicerEndoscopeConsoleModuleWidget::CameraHandler()
         }else{
             cvCvtColor(captureImageTmp, this->RGBImage, CV_BGR2RGB);
         }
-
-        unsigned char* idata;
-        idata = (unsigned char*) RGBImage->imageData;
         
         int dsize = this->imageSize.width*this->imageSize.height*3;
         memcpy((void*)this->VideoImageData->GetScalarPointer(), (void*)this->RGBImage->imageData, dsize);
@@ -308,7 +309,6 @@ int qSlicerEndoscopeConsoleModuleWidget::StartCamera(int channel, const char* pa
     else
     {
         qSlicerApplication *  app = qSlicerApplication::application();
-        qMRMLThreeDView* threeDView = app->layoutManager()->threeDWidget(0)->threeDView();
         vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
         activeRenderer->SetLayer(1);
 
@@ -321,11 +321,15 @@ int qSlicerEndoscopeConsoleModuleWidget::StartCamera(int channel, const char* pa
             this->VideoImageData->SetExtent(0, 63, 0, 63, 0, 0 );
             this->VideoImageData->SetSpacing(1.0, 1.0, 1.0);
             this->VideoImageData->SetOrigin(0.0, 0.0, 0.0);
-            this->VideoImageData->SetNumberOfScalarComponents(3);
-            this->VideoImageData->SetScalarTypeToUnsignedChar();
-            this->VideoImageData->AllocateScalars();
+#if VTK_MAJOR_VERSION <=5
+	    this->VideoImageData->SetNumberOfScalarComponents(3);
+	    this->VideoImageData->SetScalarTypeToUnsignedChar();
+	    this->VideoImageData->AllocateScalars();
+#else
+            this->VideoImageData->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
+#endif
         }
-            this->VideoImageData->Update();
+            this->VideoImageData->Modified();
             this->ViewerBackgroundOn(activeRenderer, this->VideoImageData);
     
         return 1;
@@ -347,7 +351,6 @@ int qSlicerEndoscopeConsoleModuleWidget::StopCamera()
             t->stop();
 
         qSlicerApplication *  app = qSlicerApplication::application();
-        qMRMLThreeDView* threeDView = app->layoutManager()->threeDWidget(0)->threeDView();
         vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
         activeRenderer->SetLayer(1);
     
@@ -370,7 +373,11 @@ int qSlicerEndoscopeConsoleModuleWidget::ViewerBackgroundOn(vtkRenderer* activeR
         
         // VTK Renderer
         this->BackgroundActor = vtkImageActor::New();
+#if VTK_MAJOR_VERSION <= 5
         this->BackgroundActor->SetInput(imageData);
+#else
+        this->BackgroundActor->SetInputData(imageData);
+#endif
 
         this->BackgroundRenderer = vtkRenderer::New();
         this->BackgroundRenderer->InteractiveOff();
@@ -418,9 +425,7 @@ int qSlicerEndoscopeConsoleModuleWidget::ViewerBackgroundOn(vtkRenderer* activeR
 int qSlicerEndoscopeConsoleModuleWidget::ViewerBackgroundOff(vtkRenderer* activeRenderer)
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
-    
-    vtkRenderWindow* activeRenderWindow = activeRenderer->GetRenderWindow();
-    
+
     if (activeRenderer)
     {
         // Slicer default background color
