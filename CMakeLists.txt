@@ -4,8 +4,8 @@ project(EndoscopeConsole)
 
 #-----------------------------------------------------------------------------
 set(EXTENSION_HOMEPAGE "http://www.slicer.org/slicerWiki/index.php/Documentation/4.3/Extensions/EndoscopeConsole")
-set(EXTENSION_CATEGORY "Examples")
-set(EXTENSION_CONTRIBUTORS "Atsushi Yamada (Shiga University of Medical Science, Japan)")
+set(EXTENSION_CATEGORY "IGT")
+set(EXTENSION_CONTRIBUTORS "Atsushi Yamada (Shiga University of Medical Science), Laurent Chauvin (BWH)")
 set(EXTENSION_DESCRIPTION "This is an example of extension bundling a loadable module")
 set(EXTENSION_ICONURL "http://viewvc.slicer.org/viewvc.cgi/Slicer4/trunk/Extensions/Testing/EndoscopeConsole/EndoscopeConsole.png?revision=21746&view=co")
 set(EXTENSION_SCREENSHOTURLS "http://wiki.slicer.org/slicerWiki/images/4/42/Slicer-r19441-EndoscopeConsole-screenshot.png")

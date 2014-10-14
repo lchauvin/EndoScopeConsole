@@ -69,11 +69,39 @@ qSlicerEndoscopeConsoleModuleWidget::qSlicerEndoscopeConsoleModuleWidget(QWidget
   : Superclass( _parent )
   , d_ptr( new qSlicerEndoscopeConsoleModuleWidgetPrivate )
 {
+  this->ImageCaptureTimer = new QTimer(this);
+  this->ImageCaptureFlag = 0;
+
+  this->CV_VideoCaptureIF = NULL;
+  this->CV_ImageSize = cvSize(0,0);
+  this->CV_ImageCaptured = NULL;
+
+  this->VTK_ImageCaptured = NULL;
+  this->VTK_BackgroundRenderer = NULL;
+  this->VTK_BackgroundActor = NULL;
+
+  this->VideoChannel = 0;
+  this->VideoFlipped = 0;
+  this->VideoRefreshInterval = 0;
 }
 
 //-----------------------------------------------------------------------------
 qSlicerEndoscopeConsoleModuleWidget::~qSlicerEndoscopeConsoleModuleWidget()
 {
+  if (this->VTK_ImageCaptured)
+    {
+    this->VTK_ImageCaptured->Delete();
+    }
+
+  if (this->VTK_BackgroundActor)
+    {
+    this->VTK_BackgroundActor->Delete();
+    }
+
+  if (this->VTK_BackgroundRenderer)
+    {
+    this->VTK_BackgroundRenderer->Delete();
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -89,43 +117,43 @@ void qSlicerEndoscopeConsoleModuleWidget::setup()
   connect(d->VideoImageFlipON, SIGNAL(toggled(bool)),
           this, SLOT(onVideoImageFlipONToggled(bool)));
 
-  connect(d->videoChannelNumberSpinBox, SIGNAL(valueChanged(int)),
+  connect(d->VideoChannelSpinBox, SIGNAL(valueChanged(int)),
           this, SLOT(onVideoChannelValueChanged(int)));
 
-  connect(d->videoChannelNumberSpinBox, SIGNAL(valueChanged(int)),
-          d->videoChannelNumberSlider, SLOT(setValue(int)));
+  connect(d->VideoChannelSpinBox, SIGNAL(valueChanged(int)),
+          d->VideoChannelSlider, SLOT(setValue(int)));
 
-  connect(d->videoChannelNumberSlider, SIGNAL(valueChanged(int)),
-          d->videoChannelNumberSpinBox, SLOT(setValue(int)));
+  connect(d->VideoChannelSlider, SIGNAL(valueChanged(int)),
+          d->VideoChannelSpinBox, SLOT(setValue(int)));
 
-  connect(d->videoRefreshIntervalSpinBox, SIGNAL(valueChanged(int)),
+  connect(d->VideoRefreshIntervalSpinBox, SIGNAL(valueChanged(int)),
           this, SLOT(onVideoRefreshIntervalChanged(int)));
     
-  connect(d->videoRefreshIntervalSpinBox, SIGNAL(valueChanged(int)),
-          d->videoRefreshIntervalSlider, SLOT(setValue(int)));
+  connect(d->VideoRefreshIntervalSpinBox, SIGNAL(valueChanged(int)),
+          d->VideoRefreshIntervalSlider, SLOT(setValue(int)));
     
-  connect(d->videoRefreshIntervalSlider, SIGNAL(valueChanged(int)),
-          d->videoRefreshIntervalSpinBox, SLOT(setValue(int)));
+  connect(d->VideoRefreshIntervalSlider, SIGNAL(valueChanged(int)),
+          d->VideoRefreshIntervalSpinBox, SLOT(setValue(int)));
     
-  d->videoChannelNumberSpinBox->setRange(0,10);
-  d->videoChannelNumberSlider->setRange(0,10);
-  d->videoChannelNumberSpinBox->setValue(0);
+  d->VideoChannelSpinBox->setRange(0,10);
+  d->VideoChannelSlider->setRange(0,10);
+  d->VideoChannelSpinBox->setValue(0);
     
-  d->videoRefreshIntervalSpinBox->setRange(1,1000);
-  d->videoRefreshIntervalSlider->setRange(1,1000);
-  d->videoRefreshIntervalSpinBox->setValue(50);
+  d->VideoRefreshIntervalSpinBox->setRange(1,1000);
+  d->VideoRefreshIntervalSlider->setRange(1,1000);
+  d->VideoRefreshIntervalSpinBox->setValue(50);
     
   // QTimer setup
-  t = new QTimer();
-  this->timerFlag = 0;
-  connect(t,SIGNAL(timeout()),this,SLOT(timerIntrupt()));
-  
-  this->videoImageFlipped = 1;
-  // default video channel number
-  this->videoChannelNumber = 0;
-  // default video refresh interval
-  this->videoRefreshInterval = 50; //(msec) 1000msec = 1s
-    
+  if (this->ImageCaptureTimer)
+    {
+    this->ImageCaptureFlag = 0;
+    connect(this->ImageCaptureTimer, SIGNAL(timeout()),
+	    this, SLOT(timerIntrupt()));
+    }
+
+  this->VideoFlipped = d->VideoImageFlipON->isChecked() ? 1 : 0;
+  this->VideoChannel = d->VideoChannelSpinBox->value();
+  this->VideoRefreshInterval = d->VideoRefreshIntervalSpinBox->value();
 }
 
 //-----------------------------------------------------------------------------
@@ -133,10 +161,10 @@ void qSlicerEndoscopeConsoleModuleWidget::timerIntrupt()
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
-    if(this->timerFlag == 1)
-    {
-        this->CameraHandler();
-    }
+    if (this->ImageCaptureFlag == 1)
+      {
+      this->CameraHandler();
+      }
     
 }
 
@@ -145,69 +173,67 @@ int qSlicerEndoscopeConsoleModuleWidget::CameraHandler()
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
  
-    IplImage* captureImageTmp = NULL;
-    CvSize   newImageSize;
-    
-    if (this->capture)
-    {
-        if(NULL == (captureImageTmp = cvQueryFrame( this->capture )))
+    qSlicerApplication *  app = qSlicerApplication::application();
+    vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
+    activeRenderer->SetLayer(1);
+
+    IplImage* capturedImageTmp = NULL;
+    IplImage* flippedImage = NULL;
+    CvSize   newImageSize = cvSize(0,0);
+
+    if (this->CV_VideoCaptureIF)
+      {
+      if ((capturedImageTmp = cvQueryFrame( this->CV_VideoCaptureIF )) == NULL)
         {
-            fprintf(stdout, "\n\nCouldn't take a picture\n\n");
-            return 0;
+	std::cerr << "Couldn't acquire image" << std::endl;
+	return 0;
         }
 
-        newImageSize = cvGetSize( captureImageTmp );
+        newImageSize = cvGetSize( capturedImageTmp );
         
         // check if the image size is changed
-        if (newImageSize.width != this->imageSize.width ||
-            newImageSize.height != this->imageSize.height)
+        if (newImageSize.width != this->CV_ImageSize.width ||
+            newImageSize.height != this->CV_ImageSize.height)
         {
-            this->imageSize.width = newImageSize.width;
-            this->imageSize.height = newImageSize.height;
-            this->captureImage = cvCreateImage(this->imageSize, IPL_DEPTH_8U,3);
-            this->RGBImage = cvCreateImage(imageSize, IPL_DEPTH_8U, 3);
-            this->undistortionImage = cvCreateImage( this->imageSize, IPL_DEPTH_8U, 3);
+            this->CV_ImageSize.width = newImageSize.width;
+            this->CV_ImageSize.height = newImageSize.height;
+	    this->CV_ImageCaptured = cvCreateImage(this->CV_ImageSize, IPL_DEPTH_8U, capturedImageTmp->nChannels);
+            flippedImage = cvCreateImage(this->CV_ImageSize, IPL_DEPTH_8U, capturedImageTmp->nChannels);
             
-            this->VideoImageData->SetDimensions(newImageSize.width, newImageSize.height, 1);
-            this->VideoImageData->SetExtent(0, newImageSize.width-1, 0, newImageSize.height-1, 0, 0 );
-#if VTK_MAJOR_VERSION <=5
-	    this->VideoImageData->SetNumberOfScalarComponents(3);
-	    this->VideoImageData->SetScalarTypeToUnsignedChar();
-	    this->VideoImageData->AllocateScalars();
-	    this->VideoImageData->Update();
+	    if (this->VTK_ImageCaptured)
+	      {
+	      this->VTK_ImageCaptured->SetDimensions(newImageSize.width, newImageSize.height, 1);
+	      this->VTK_ImageCaptured->SetExtent(0, newImageSize.width-1, 0, newImageSize.height-1, 0, 0 );
+#if VTK_MAJOR_VERSION <= 5
+	      this->VTK_ImageCaptured->SetNumberOfScalarComponents(capturedImageTmp->nChannels);
+	      this->VTK_ImageCaptured->SetScalarTypeToUnsignedChar();
+	      this->VTK_ImageCaptured->AllocateScalars();
+	      this->VTK_ImageCaptured->Update();
 #else
-            this->VideoImageData->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
-            this->VideoImageData->Modified();
+	      this->VTK_ImageCaptured->AllocateScalars(VTK_UNSIGNED_CHAR, capturedImageTmp->nChannels);
+	      this->VTK_ImageCaptured->Modified();
 #endif
-
-            qSlicerApplication *  app = qSlicerApplication::application();
-            vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
-            activeRenderer->SetLayer(1);
-            
-            //ViewerBackgroundOff(activeRenderer);
-            ViewerBackgroundOn(activeRenderer, this->VideoImageData);
+	      }
         }
 
         // Display video image
-        if(this->videoImageFlipped == 1)
-        {
-            cvFlip(captureImageTmp, this->captureImage, 0);
-            cvCvtColor(this->captureImage, this->RGBImage, CV_BGR2RGB);
-        }else{
-            cvCvtColor(captureImageTmp, this->RGBImage, CV_BGR2RGB);
-        }
+        if (this->VideoFlipped == 1)
+	  {
+	  cvFlip(capturedImageTmp, capturedImageTmp, 0);
+	  }
+	cvCvtColor(capturedImageTmp, this->CV_ImageCaptured, CV_BGR2RGB);
         
-        int dsize = this->imageSize.width*this->imageSize.height*3;
-        memcpy((void*)this->VideoImageData->GetScalarPointer(), (void*)this->RGBImage->imageData, dsize);
+        int imSize = this->CV_ImageSize.width*this->CV_ImageSize.height*capturedImageTmp->nChannels;
+        memcpy((void*)this->VTK_ImageCaptured->GetScalarPointer(), (void*)this->CV_ImageCaptured->imageData, imSize);
 
-        if (this->VideoImageData && this->BackgroundRenderer)
-        {
-            this->VideoImageData->Modified();
-            this->BackgroundRenderer->GetRenderWindow()->Render();
-        }
-        
-    }
-    
+        if (this->VTK_ImageCaptured && this->VTK_BackgroundRenderer)
+	  {
+	  this->VTK_ImageCaptured->Modified();
+	  this->ViewerBackgroundOn(activeRenderer);
+	  this->VTK_BackgroundRenderer->GetRenderWindow()->Render();
+	  }
+      }
+
     return 1;
 }
 
@@ -216,33 +242,35 @@ void qSlicerEndoscopeConsoleModuleWidget::onVideoONToggled(bool checked)
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
 
-    
-    if(checked)
-    {
-        // QTimer start
-        
-        if( t->isActive())
-            t->stop();
-        this->timerFlag = 0;
-        t->start(this->videoRefreshInterval);
-        
-        //this->StartCamera(0, NULL);
-        this->StartCamera(this->videoChannelNumber, NULL);
+    if (checked)
+      {
+      // QTimer start
+      if (this->ImageCaptureTimer->isActive())
+	{
+	this->ImageCaptureTimer->stop();
+	}
+      this->ImageCaptureFlag = 0;
 
-    }
+      this->StartCamera(this->VideoChannel, NULL);
+
+      this->ImageCaptureTimer->start(this->VideoRefreshInterval);
+      }
     else
-    {
-        this->StopCamera();
-        if(this->capture)
+      {
+      // QTimer stop
+      if (this->ImageCaptureTimer->isActive())
+	{
+	this->ImageCaptureTimer->stop();
+	}
+      this->ImageCaptureFlag = 0;
+
+      this->StopCamera();
+
+      if (this->CV_VideoCaptureIF)
         {
-            cvReleaseCapture(&this->capture);
+	cvReleaseCapture(&this->CV_VideoCaptureIF);
         }
-        this->timerFlag = 0;
-        // Qtimer stop
-        if( t->isActive())
-            t->stop();
-    }
-    
+      }
 }
 
 //-----------------------------------------------------------------------------
@@ -250,15 +278,7 @@ void qSlicerEndoscopeConsoleModuleWidget::onVideoImageFlipONToggled(bool checked
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
-    if(checked)
-    {
-        this->videoImageFlipped = 1;
-    }
-    else
-    {
-        this->videoImageFlipped = 0;
-    }
-    
+    this->VideoFlipped = (checked ? 1 : 0);
 }
 
 //-----------------------------------------------------------------------------
@@ -266,7 +286,7 @@ void qSlicerEndoscopeConsoleModuleWidget::onVideoChannelValueChanged(int channel
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
-    this->videoChannelNumber = channel;
+    this->VideoChannel = channel;
 }
 
 //-----------------------------------------------------------------------------
@@ -274,7 +294,7 @@ void qSlicerEndoscopeConsoleModuleWidget::onVideoRefreshIntervalChanged(int inte
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
-    this->videoRefreshInterval = interval;
+    this->VideoRefreshInterval = interval;
 }
 
 //-----------------------------------------------------------------------------
@@ -285,56 +305,47 @@ int qSlicerEndoscopeConsoleModuleWidget::StartCamera(int channel, const char* pa
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
     // video import setup
-    this->capture = NULL;
-    this->captureImage = NULL;
-    this->RGBImage     = NULL;
-    this->undistortionImage = NULL;
-    this->imageSize.width = 0;
-    this->imageSize.height = 0;
-    this->VideoImageData = NULL;
-    
+    // Start reading images
     if (channel < 0 && path != NULL)
-    {
-        this->capture = cvCaptureFromAVI(path);
-    }
+      {
+      this->CV_VideoCaptureIF = cvCaptureFromAVI(path);
+      }
     else
-    {
-        this->capture = cvCaptureFromCAM(channel);
-    }
-    
-    if (this->capture == NULL)
-    {
-        return 0;
-    }
-    else
-    {
-        qSlicerApplication *  app = qSlicerApplication::application();
-        vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
-        activeRenderer->SetLayer(1);
+      {
+      this->CV_VideoCaptureIF = cvCaptureFromCAM(channel);
+      }
 
-        this->timerFlag = 1;
-    
-        if (!this->VideoImageData)
-        {
-            this->VideoImageData = vtkImageData::New();
-            this->VideoImageData->SetDimensions(64, 64, 1);
-            this->VideoImageData->SetExtent(0, 63, 0, 63, 0, 0 );
-            this->VideoImageData->SetSpacing(1.0, 1.0, 1.0);
-            this->VideoImageData->SetOrigin(0.0, 0.0, 0.0);
-#if VTK_MAJOR_VERSION <=5
-	    this->VideoImageData->SetNumberOfScalarComponents(3);
-	    this->VideoImageData->SetScalarTypeToUnsignedChar();
-	    this->VideoImageData->AllocateScalars();
+    if (!this->CV_VideoCaptureIF)
+      {
+      return 0;
+      }
+
+    qSlicerApplication *  app = qSlicerApplication::application();
+    vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
+    activeRenderer->SetLayer(1);
+
+    this->ImageCaptureFlag = 1;
+
+    if (!this->VTK_ImageCaptured)
+      {
+      this->VTK_ImageCaptured = vtkImageData::New();
+      this->VTK_ImageCaptured->SetDimensions(64,64,1);
+      this->VTK_ImageCaptured->SetExtent(0,63,0,63,0,0);
+      this->VTK_ImageCaptured->SetSpacing(1,1,1);
+      this->VTK_ImageCaptured->SetOrigin(0,0,0);
+#if VTK_MAJOR_VERSION <= 5
+      this->VTK_ImageCaptured->SetNumberOfScalarComponents(3);
+      this->VTK_ImageCaptured->SetScalarTypeToUnsignedChar();
+      this->VTK_ImageCaptured->AllocateScalars();
 #else
-            this->VideoImageData->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
+      this->VTK_ImageCaptured->AllocateScalars(VTK_UNSIGNED_CHAR,3);
 #endif
-        }
-            this->VideoImageData->Modified();
-            this->ViewerBackgroundOn(activeRenderer, this->VideoImageData);
-    
-        return 1;
-    }
-    
+      this->VTK_ImageCaptured->Modified();
+      }
+
+    this->ViewerBackgroundOn(activeRenderer);
+
+    return 1;
 }
 
 //-----------------------------------------------------------------------------
@@ -342,83 +353,91 @@ int qSlicerEndoscopeConsoleModuleWidget::StopCamera()
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
-    // Qtimer stop
-    if(this->capture)
-    {
-        cvReleaseCapture(&this->capture);
-    
-        if( t->isActive())
-            t->stop();
+    // QTimer stop
+    if (this->CV_VideoCaptureIF)
+      {
+        if (this->ImageCaptureTimer->isActive())
+	  {
+	  this->ImageCaptureTimer->stop();
+	  }
+
+        cvReleaseCapture(&this->CV_VideoCaptureIF);
 
         qSlicerApplication *  app = qSlicerApplication::application();
         vtkRenderer* activeRenderer = app->layoutManager()->activeThreeDRenderer();
         activeRenderer->SetLayer(1);
-    
-        ViewerBackgroundOff(activeRenderer);
-    }
-    
+
+        this->ViewerBackgroundOff(activeRenderer);
+
+	this->CV_VideoCaptureIF = NULL;
+	this->CV_ImageCaptured = NULL;
+	this->CV_ImageSize = cvSize(0,0);
+      }
+
     return 1;
-    
 }
 
 //-----------------------------------------------------------------------------
-int qSlicerEndoscopeConsoleModuleWidget::ViewerBackgroundOn(vtkRenderer* activeRenderer,vtkImageData* imageData)
+int qSlicerEndoscopeConsoleModuleWidget::ViewerBackgroundOn(vtkRenderer* activeRenderer)
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
     
     vtkRenderWindow* activeRenderWindow = activeRenderer->GetRenderWindow();
 
-    if (activeRenderer)
-    {
-        
+    if (activeRenderer && this->VTK_ImageCaptured)
+      {
+      if (!this->VTK_BackgroundActor)
+	{
         // VTK Renderer
-        this->BackgroundActor = vtkImageActor::New();
+        this->VTK_BackgroundActor = vtkImageActor::New();
+	}
+
 #if VTK_MAJOR_VERSION <= 5
-        this->BackgroundActor->SetInput(imageData);
+      this->VTK_BackgroundActor->SetInput(this->VTK_ImageCaptured);
 #else
-        this->BackgroundActor->SetInputData(imageData);
+      this->VTK_BackgroundActor->SetInputData(this->VTK_ImageCaptured);
 #endif
 
-        this->BackgroundRenderer = vtkRenderer::New();
-        this->BackgroundRenderer->InteractiveOff();
-        this->BackgroundRenderer->SetLayer(0);
-        this->BackgroundRenderer->AddActor(this->BackgroundActor);
-        
-        this->BackgroundRenderer->GradientBackgroundOff();
-        this->BackgroundRenderer->SetBackground(0,0,0);
-        
-        this->BackgroundActor->Modified();
-        
-        activeRenderWindow->AddRenderer(this->BackgroundRenderer);
-        
-        // Adjust camera position so that image covers the draw area.
-        vtkCamera* camera = this->BackgroundRenderer->GetActiveCamera();
-        camera->ParallelProjectionOn();
-        
-        // Set up the background camera to fill the renderer with the image
-        double origin[3];
-        double spacing[3];
-        int extent[6];
-        
-        imageData->GetOrigin( origin );
-        imageData->GetSpacing( spacing );
-        imageData->GetExtent( extent );
-        
-        double xc = origin[0] + 0.5*(extent[0] + extent[1])*spacing[0];
-        double yc = origin[1] + 0.5*(extent[2] + extent[3])*spacing[1];
-        double yd = (extent[3] - extent[2] + 1)*spacing[1];
-        double d = camera->GetDistance();
-        
-        camera->SetParallelScale(0.5*yd);
-        camera->SetFocalPoint(xc,yc,0.0);
-        camera->SetPosition(xc,yc,d);
-        
-        activeRenderWindow->Render();
-        
+      if (!this->VTK_BackgroundRenderer)
+	{
+        this->VTK_BackgroundRenderer = vtkRenderer::New();
+        this->VTK_BackgroundRenderer->InteractiveOff();
+        this->VTK_BackgroundRenderer->SetLayer(0);
+        this->VTK_BackgroundRenderer->GradientBackgroundOff();
+        this->VTK_BackgroundRenderer->SetBackground(0,0,0);
+
+	activeRenderWindow->AddRenderer(this->VTK_BackgroundRenderer);
+        }
+
+      this->VTK_BackgroundRenderer->AddActor(this->VTK_BackgroundActor);
+      this->VTK_BackgroundActor->Modified();
+
+      // Adjust camera position so that image covers the draw area.
+      vtkCamera* camera = this->VTK_BackgroundRenderer->GetActiveCamera();
+      camera->ParallelProjectionOn();
+
+      // Set up the background camera to fill the renderer with the image
+      double origin[3];
+      double spacing[3];
+      int extent[6];
+
+      this->VTK_ImageCaptured->GetOrigin( origin );
+      this->VTK_ImageCaptured->GetSpacing( spacing );
+      this->VTK_ImageCaptured->GetExtent( extent );
+
+      double xc = origin[0] + 0.5*(extent[0] + extent[1])*spacing[0];
+      double yc = origin[1] + 0.5*(extent[2] + extent[3])*spacing[1];
+      double yd = (extent[3] - extent[2] + 1)*spacing[1];
+      double d = camera->GetDistance();
+
+      camera->SetParallelScale(0.5*yd);
+      camera->SetFocalPoint(xc,yc,0.0);
+      camera->SetPosition(xc,yc,d);
+
+      activeRenderWindow->Render();
     }
     
     return 0;
-    
 }
 
 //-----------------------------------------------------------------------------
@@ -429,17 +448,13 @@ int qSlicerEndoscopeConsoleModuleWidget::ViewerBackgroundOff(vtkRenderer* active
     if (activeRenderer)
     {
         // Slicer default background color
-        this->BackgroundRenderer->GradientBackgroundOn();
-        this->BackgroundRenderer->SetBackground(0.7568627450980392, 0.7647058823529412, 0.9098039215686275);
-        this->BackgroundRenderer->SetBackground2(0.4549019607843137, 0.4705882352941176, 0.7450980392156863);
-        
-        this->BackgroundRenderer->RemoveActor(this->BackgroundActor);
-        this->BackgroundRenderer->GetRenderWindow()->Render();
+        this->VTK_BackgroundRenderer->GradientBackgroundOn();
+        this->VTK_BackgroundRenderer->SetBackground(0.7568627450980392, 0.7647058823529412, 0.9098039215686275);
+        this->VTK_BackgroundRenderer->SetBackground2(0.4549019607843137, 0.4705882352941176, 0.7450980392156863);
 
-        this->BackgroundActor = NULL;
-
+        this->VTK_BackgroundRenderer->RemoveActor(this->VTK_BackgroundActor);
+        this->VTK_BackgroundRenderer->GetRenderWindow()->Render();
     }
     
     return 0;
-
 }
