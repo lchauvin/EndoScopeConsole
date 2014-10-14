@@ -79,29 +79,29 @@ public:
   virtual ~qSlicerEndoscopeConsoleModuleWidget();
     
   int ViewerBackgroundOff(vtkRenderer* activeRenderer);
-  int ViewerBackgroundOn(vtkRenderer* activeRenderer, vtkImageData* imageData);
+  int ViewerBackgroundOn(vtkRenderer* activeRenderer);
   int StartCamera(int channel, const char* path);
   int StopCamera();
   int CameraHandler();
     
-  // for timer loop to refresh obtained video images
-  QTimer *t;
-  int timerFlag;
+  // Timer Image Capture
+  QTimer *ImageCaptureTimer;
+  int ImageCaptureFlag;
   
-  // video import
-  CvCapture* capture;
-  CvSize imageSize;
-  IplImage* RGBImage;
-  IplImage* undistortionImage;
-  IplImage*     captureImage;
+  // OpenCV
+  CvCapture* CV_VideoCaptureIF;
+  CvSize CV_ImageSize;
+  IplImage* CV_ImageCaptured;
     
-  vtkImageData* VideoImageData;
-  vtkRenderer*   BackgroundRenderer;
-  vtkImageActor* BackgroundActor;
+  // VTK
+  vtkImageData* VTK_ImageCaptured;
+  vtkRenderer*   VTK_BackgroundRenderer;
+  vtkImageActor* VTK_BackgroundActor;
     
-  int videoChannelNumber;
-  int videoImageFlipped;
-  int videoRefreshInterval;
+  // Options
+  int VideoChannel;
+  int VideoFlipped;
+  int VideoRefreshInterval;
     
 public slots:
   void onVideoONToggled(bool checked);

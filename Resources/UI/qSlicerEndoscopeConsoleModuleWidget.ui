@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>550</width>
-    <height>460</height>
+    <width>502</width>
+    <height>321</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -20,6 +20,13 @@
       <string>Display</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_3">
+      <item>
+       <widget class="QPushButton" name="LoadConfigFileButton">
+        <property name="text">
+         <string>Load Camera Configuration File</string>
+        </property>
+       </widget>
+      </item>
       <item>
        <widget class="QGroupBox" name="VideoGroup">
         <property name="title">
@@ -139,10 +146,10 @@
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout">
            <item>
-            <widget class="QSpinBox" name="videoChannelNumberSpinBox"/>
+            <widget class="QSpinBox" name="VideoChannelSpinBox"/>
            </item>
            <item>
-            <widget class="QSlider" name="videoChannelNumberSlider">
+            <widget class="QSlider" name="VideoChannelSlider">
              <property name="maximum">
               <number>10</number>
              </property>
@@ -178,10 +185,10 @@
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_4">
            <item>
-            <widget class="QSpinBox" name="videoRefreshIntervalSpinBox"/>
+            <widget class="QSpinBox" name="VideoRefreshIntervalSpinBox"/>
            </item>
            <item>
-            <widget class="QSlider" name="videoRefreshIntervalSlider">
+            <widget class="QSlider" name="VideoRefreshIntervalSlider">
              <property name="orientation">
               <enum>Qt::Horizontal</enum>
              </property>
