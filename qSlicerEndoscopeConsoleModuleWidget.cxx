@@ -293,8 +293,15 @@ void qSlicerEndoscopeConsoleModuleWidget::onVideoChannelValueChanged(int channel
 void qSlicerEndoscopeConsoleModuleWidget::onVideoRefreshIntervalChanged(int interval)
 {
     Q_D(qSlicerEndoscopeConsoleModuleWidget);
+
+    if (this->ImageCaptureTimer->isActive())
+      {
+      this->ImageCaptureTimer->stop();
+      }
     
     this->VideoRefreshInterval = interval;
+
+    this->ImageCaptureTimer->start(this->VideoRefreshInterval);
 }
 
 //-----------------------------------------------------------------------------
